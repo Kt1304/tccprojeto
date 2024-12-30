@@ -151,7 +151,7 @@ class _CadastroState extends State<Cadastro> {
 
       if (responseFile.success) {
         // Salva o URL do arquivo no campo DocumentoValidacao
-        usuario.set<String>('DocumentoValidacao', parseFile.url!);
+        usuario.set<ParseFileBase>('DocumentoValidacao', parseFile);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Erro ao salvar o arquivo no Parse!')),
