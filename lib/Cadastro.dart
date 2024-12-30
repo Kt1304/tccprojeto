@@ -84,7 +84,6 @@ class _CadastroState extends State<Cadastro> {
   Future<void> _saveFileToParse() async {
     if (_pickedFile != null) {
       // Cria um objeto ParseFile a partir do arquivo
-      
       ParseFileBase parseFile = ParseFile(File(_pickedFile!.path!));
 
       // Salva o arquivo no Parse
@@ -134,7 +133,7 @@ class _CadastroState extends State<Cadastro> {
       return;
     }
 
-    final user = ParseUser(email, senha, email)
+    final ParseObject usuario = ParseObject('Usuario')
       ..set<String>('Nome', _nomeController.text)
       ..set<String>('Cpf', cpf)
       ..set<String>('Telefone', _telefoneController.text)
@@ -143,7 +142,7 @@ class _CadastroState extends State<Cadastro> {
       ..set<String>('Estado', _estadoController.text)
       ..set<String>('Senha', _senhaController.text);
 
-    /*  if (_pickedFile != null) {
+    if (_pickedFile != null) {
       // Salva o arquivo como ParseFile
       ParseFileBase parseFile = ParseFile(File(_pickedFile!.path!));
 
@@ -159,9 +158,9 @@ class _CadastroState extends State<Cadastro> {
         );
         return;
       }
-    } */
-   
-    final response = await user.signUp();
+    }
+
+    final response = await usuario.save();
 
     if (response.success) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -335,7 +334,7 @@ class _CadastroState extends State<Cadastro> {
                   foregroundColor: Colors.white,
                   side: BorderSide(color: Colors.white, width: 1),
                 )),
-            /*  const SizedBox(height: 10),
+            const SizedBox(height: 10),
             ElevatedButton(
                 onPressed: _pickFile, // Correção aqui!
                 child: const Text('Anexar arquivo'),
@@ -343,7 +342,7 @@ class _CadastroState extends State<Cadastro> {
                   minimumSize: const Size(double.infinity, 50),
                   foregroundColor: Colors.white,
                   side: BorderSide(color: Colors.white, width: 1),
-                )) */
+                ))
           ],
         ),
       ),
