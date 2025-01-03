@@ -34,6 +34,36 @@ class MyApp extends StatelessWidget {
   }
 }
 
+bool _validarCPF(String cpf) {
+  cpf = cpf.replaceAll(RegExp(r'\D'), ''); // Remove caracteres não numéricos
+  if (cpf.length != 11) return false;
+
+  // Verifica se todos os dígitos são iguais (ex: 111.111.111-11)
+  if (RegExp(r'^(\d)\1*$').hasMatch(cpf)) return false;
+
+  List<int> numeros = cpf.split('').map(int.parse).toList();
+
+  // Cálculo do primeiro dígito verificador
+  int soma = 0;
+  for (int i = 0; i < 9; i++) {
+    soma += numeros[i] * (10 - i);
+  }
+  int primeiroDigito = (soma * 10) % 11;
+  if (primeiroDigito == 10) primeiroDigito = 0;
+  if (numeros[9] != primeiroDigito) return false;
+
+  // Cálculo do segundo dígito verificador
+  soma = 0;
+  for (int i = 0; i < 10; i++) {
+    soma += numeros[i] * (11 - i);
+  }
+  int segundoDigito = (soma * 10) % 11;
+  if (segundoDigito == 10) segundoDigito = 0;
+  if (numeros[10] != segundoDigito) return false;
+
+  return true;
+}
+
 final cpfFormatter = MaskTextInputFormatter(
     mask: '###.###.###-##', filter: {"#": RegExp(r'[0-9]')});
 final telefoneFormatter = MaskTextInputFormatter(
@@ -80,8 +110,7 @@ class _CadastroState extends State<Cadastro> {
     final ParseResponse response = await query.query();
     return response.results != null && response.results!.isNotEmpty;
   }
-
-  Future<void> _saveFileToParse() async {
+/* Future<void> _saveFileToParse() async {
     if (_pickedFile != null) {
       // Cria um objeto ParseFile a partir do arquivo
       ParseFileBase parseFile = ParseFile(File(_pickedFile!.path!));
@@ -99,14 +128,21 @@ class _CadastroState extends State<Cadastro> {
         );
       }
     }
-  }
+  } */
 
   Future<void> _inserirUsuario() async {
     final String cpf = _cpfController.text;
     final String email = _emailController.text;
 
+    if (!_validarCPF(cpf)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('CPF inválido!')),
+      );
+      return;
+    }
+
     bool cpfExiste = await _verificaDuplicidade('Cpf', cpf);
-    bool emailExiste = await _verificaDuplicidade('Email', email);
+    bool emailExiste = await _verificaDuplicidade('email', email);
 
     final String confirmarsenha = _confirmarSenha.text;
     final String senha = _senhaController.text;
@@ -133,7 +169,8 @@ class _CadastroState extends State<Cadastro> {
       return;
     }
 
-    final ParseObject usuario = ParseObject('Usuario')
+    final ParseUser usuario = ParseUser(
+        _emailController.text, _senhaController.text, _emailController.text)
       ..set<String>('Nome', _nomeController.text)
       ..set<String>('Cpf', cpf)
       ..set<String>('Telefone', _telefoneController.text)
@@ -142,15 +179,11 @@ class _CadastroState extends State<Cadastro> {
       ..set<String>('Estado', _estadoController.text)
       ..set<String>('Senha', _senhaController.text);
 
-    if (_pickedFile != null) {
-      // Salva o arquivo como ParseFile
+    /* if (_pickedFile != null) {
       ParseFileBase parseFile = ParseFile(File(_pickedFile!.path!));
-
-      // Faz o upload do arquivo e aguarda o sucesso
       ParseResponse responseFile = await parseFile.save();
 
       if (responseFile.success) {
-        // Salva o URL do arquivo no campo DocumentoValidacao
         usuario.set<ParseFileBase>('DocumentoValidacao', parseFile);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -158,7 +191,7 @@ class _CadastroState extends State<Cadastro> {
         );
         return;
       }
-    }
+    } */
 
     final response = await usuario.save();
 
@@ -334,17 +367,8 @@ class _CadastroState extends State<Cadastro> {
                   foregroundColor: Colors.white,
                   side: BorderSide(color: Colors.white, width: 1),
                 )),
-            const SizedBox(height: 10),
-            ElevatedButton(
-                onPressed: _pickFile, // Correção aqui!
-                child: const Text('Anexar arquivo'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: Colors.white, width: 1),
-                ))
           ],
-        ),
+        ),  
       ),
     );
   }
