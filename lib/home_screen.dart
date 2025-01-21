@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:login_ui/login_screen.dart';
 import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
 import 'package:intl/intl.dart'; // Importando o pacote intl
+import 'package:login_ui/inscrição.dart';
 
 // Tela para Certificados
 class CertificadosScreen extends StatelessWidget {
@@ -9,15 +11,58 @@ class CertificadosScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Certificados')),
+      appBar: AppBar(
+        title: const Text('Certificados'),
+        centerTitle: true,
+        actions: [
+          Row(
+            children: [
+              const Text('Sair'),
+              IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: () => _logout(context),
+              ),
+            ],
+          )
+        ],
+      ),
       body: const Center(child: Text('Aqui estarão os certificados')),
+    );
+  }
+}
+
+Future<void> _logout(BuildContext context) async {
+  final ParseUser? currentUser = await ParseUser.currentUser() as ParseUser?;
+
+  if (currentUser != null) {
+    final ParseResponse response = await currentUser.logout();
+    if (response.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Logout realizado com sucesso!')),
+      );
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+            builder: (context) => const LoginPage(title: 'Login')),
+        (route) => false,
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro no logout: ${response.error?.message}')),
+      );
+    }
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Nenhum usuário está logado.')),
     );
   }
 }
 
 // Tela para Meus Eventos
 class MeusEventos extends StatefulWidget {
-  const MeusEventos({Key? key}) : super(key: key);
+  final String objectId;
+
+  const MeusEventos({Key? key, required this.objectId}) : super(key: key);
 
   @override
   _MeusEventosState createState() => _MeusEventosState();
@@ -27,34 +72,41 @@ class _MeusEventosState extends State<MeusEventos> {
   late Future<List<Map<String, dynamic>>> inscricoesFuturas;
 
   Future<List<Map<String, dynamic>>> _fetchInscricoes() async {
-    final user = await ParseUser.currentUser() as ParseUser?;
+    try {
+      final user = await ParseUser.currentUser() as ParseUser?;
 
-    if (user == null) {
-      throw Exception('Usuário não está autenticado');
-    }
-
-    final query = QueryBuilder(ParseObject('Inscricao'))
-      ..whereEqualTo('IdUsuario', user)
-      ..includeObject(['IdEvento']); // Carregar detalhes do evento
-
-    final response = await query.query();
-
-    if (response.success && response.results != null) {
-      List<Map<String, dynamic>> eventos = [];
-      for (var inscricao in response.results!) {
-        final evento = inscricao.get<ParseObject>('evento');
-        if (evento != null) {
-          eventos.add({
-            'NomeEvento': evento.get<String>('NomeEvento') ?? 'Sem Nome',
-            'Descricao': evento.get<String>('Descricao') ?? 'Sem descrição',
-            'DataInicio': evento.get<DateTime>('DataInicio') ?? DateTime.now(),
-            'DataFim': evento.get<DateTime>('DataFim') ?? DateTime.now(),
-          });
-        }
+      if (user == null) {
+        throw Exception('Usuário não está autenticado');
       }
-      return eventos;
-    } else {
-      throw Exception('Erro ao carregar inscrições');
+
+      // Consulta para pegar todas as inscrições do usuário
+      final query = QueryBuilder<ParseObject>(ParseObject('Inscricao'))
+        ..whereEqualTo(
+            'IdUsuario',
+            ParseObject('_User')
+              ..objectId = user
+                  .objectId) // Garantindo que estamos buscando as inscrições do usuário
+        ..includeObject(['IdEvento']); // Inclui os detalhes do evento associado
+
+      final response = await query.query();
+
+      if (response.success && response.results != null) {
+        return response.results!.map((inscricao) {
+          final evento = inscricao.get<ParseObject>('IdEvento');
+          return {
+            'NomeEvento': evento?.get<String>('NomeEvento') ?? 'Sem Nome',
+            'Descricao': evento?.get<String>('Descricao') ?? 'Sem descrição',
+            'DataInicio': evento?.get<DateTime>('DataInicio') ?? DateTime.now(),
+            'DataFim': evento?.get<DateTime>('DataFim') ?? DateTime.now(),
+          };
+        }).toList();
+      } else {
+        throw Exception(
+            'Erro ao carregar inscrições: ${response.error?.message ?? 'Desconhecido'}');
+      }
+    } catch (e) {
+      print("Erro ao carregar as inscrições: $e");
+      rethrow;
     }
   }
 
@@ -67,14 +119,32 @@ class _MeusEventosState extends State<MeusEventos> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(centerTitle: true, title: const Text('Meus Eventos')),
+      appBar: AppBar(
+        centerTitle: true,
+        title: const Text('Meus Eventos'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _logout(context),
+          ),
+        ],
+      ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: inscricoesFuturas,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           } else if (snapshot.hasError) {
-            return Center(child: Text('Erro: ${snapshot.error}'));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'Erro ao carregar eventos:\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            );
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text('Nenhuma inscrição encontrada.'));
           } else {
@@ -93,33 +163,40 @@ class _MeusEventosState extends State<MeusEventos> {
                 final endTime =
                     DateFormat('HH:mm').format(evento['DataFim'] as DateTime);
 
-                return Card(
-                  elevation: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(16),
-                    leading: Icon(Icons.event, color: Colors.green[700]),
-                    title: Text(
-                      evento['NomeEvento'],
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    subtitle: Text(
-                      '${evento['Descricao']}\n'
-                      'Data Início: $startDate às $startTime\n'
-                      'Data Fim: $endDate às $endTime',
-                    ),
-                  ),
-                );
+                return _buildEventCard(
+                    evento, startDate, startTime, endDate, endTime);
               },
             );
           }
         },
+      ),
+    );
+  }
+
+  // Método para criar o card do evento
+  Widget _buildEventCard(Map<String, dynamic> evento, String startDate,
+      String startTime, String endDate, String endTime) {
+    return Card(
+      elevation: 4,
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: Icon(Icons.event, color: Colors.green[700]),
+        title: Text(
+          evento['NomeEvento'],
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          '${evento['Descricao']}\n'
+          'Data Início: $startDate às $startTime\n'
+          'Data Fim: $endDate às $endTime',
+        ),
       ),
     );
   }
@@ -157,7 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
           CertificadosScreen(), // Primeira tela (Certificados)
           HomeContent(objectId: widget.objectId), // Tela inicial (Eventos)
           ProfileScreen(objectId: widget.objectId), // Tela de Perfil
-          MeusEventos(), // Tela de Meus Eventos
+          MeusEventos(objectId: widget.objectId), // Tela de Meus Eventos
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -196,8 +273,8 @@ class _HomeScreenState extends State<HomeScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => CadastroEventoScreen(
-                  objectId: widget.objectId),
+              builder: (context) =>
+                  CadastroEventoScreen(objectId: widget.objectId),
             ),
           );
         },
@@ -231,6 +308,7 @@ class _HomeContentState extends State<HomeContent> {
       List<Map<String, dynamic>> eventos = [];
       for (var evento in response.results!) {
         eventos.add({
+          'objectId': evento.objectId,
           'NomeEvento': evento.get<String>('NomeEvento') ?? 'Sem Nome',
           'Descricao': evento.get<String>('Descricao') ?? 'Sem descrição',
           'DataInicio': evento.get<DateTime>('DataInicio') ?? DateTime.now(),
@@ -256,102 +334,205 @@ class _HomeContentState extends State<HomeContent> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: eventosFuturos,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        } else if (snapshot.hasError) {
-          return Center(child: Text('Erro: ${snapshot.error}'));
-        } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(child: Text('Nenhum evento encontrado.'));
-        } else {
-          final eventos = snapshot.data!
-              .where((evento) => evento['DataInicio'].isAfter(DateTime.now()))
-              .toList();
-
-          return Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: ListView.builder(
-              itemCount: eventos.length,
-              itemBuilder: (context, index) {
-                final evento = eventos[index];
-
-                // Formatação da data
-                final startDate =
-                    DateFormat('dd/MM/yyyy').format(evento['DataInicio']);
-                final startTime =
-                    DateFormat('HH:mm').format(evento['DataInicio']);
-                final endDate =
-                    DateFormat('dd/MM/yyyy').format(evento['DataFim']);
-                final endTime = DateFormat('HH:mm').format(evento['DataFim']);
-
-                return Card(
-                  elevation: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(16),
-                    leading: Icon(Icons.event, color: Colors.green[700]),
-                    title: Text(
-                      evento['NomeEvento'],
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    subtitle: Text(
-                      '${evento['Descricao']}\n'
-                      'Data Início: $startDate às $startTime\n'
-                      'Data Fim: $endDate às $endTime\n'
-                      'Vagas: ${evento['Vagas']} vagas',
-                    ),
-                    trailing: ElevatedButton(
-                      onPressed: () {
-                        // Inscrever no evento
-                      },
-                      child: const Text('Inscrever-se'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[700],
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                    onTap: () {
-                      // Lógica para abrir a página de detalhes do evento
-                    },
-                  ),
-                );
-              },
-            ),
-          );
-        }
-      },
-    );
-  }
-}
-
-class ProfileScreen extends StatelessWidget {
-  final String objectId; // Adicione um campo para armazenar o objectId
-
-  // Construtor que recebe o objectId
-  ProfileScreen({Key? key, required this.objectId}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Text(
-            'Perfil do usuário - Object ID: $objectId'), // Exibe o Object ID no texto
+      appBar: AppBar(
+        centerTitle: true,
+        title: const Text('Meus Eventos'),
+        actions: [
+          Row(
+            children: [
+              const Text('Sair'),
+              IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: () => _logout(context),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: eventosFuturos,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Erro: ${snapshot.error}'));
+          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('Nenhum evento encontrado.'));
+          } else {
+            final eventos = snapshot.data!
+                .where((evento) => evento['DataInicio'].isAfter(DateTime.now()))
+                .toList();
+
+            return Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: ListView.builder(
+                itemCount: eventos.length,
+                itemBuilder: (context, index) {
+                  final evento = eventos[index];
+
+                  // Formatação da data
+                  final startDate =
+                      DateFormat('dd/MM/yyyy').format(evento['DataInicio']);
+                  final startTime =
+                      DateFormat('HH:mm').format(evento['DataInicio']);
+                  final endDate =
+                      DateFormat('dd/MM/yyyy').format(evento['DataFim']);
+                  final endTime = DateFormat('HH:mm').format(evento['DataFim']);
+
+                  return Card(
+                    elevation: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.all(16),
+                      leading: Icon(Icons.event, color: Colors.green[700]),
+                      title: Text(
+                        evento['NomeEvento'],
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${evento['Descricao']}\n'
+                        'Data Início: $startDate às $startTime\n'
+                        'Data Fim: $endDate às $endTime\n'
+                        'Vagas: ${evento['Vagas']} vagas',
+                      ),
+                      trailing: ElevatedButton(
+                        onPressed: () async {
+                          print("Dados do evento: $evento");
+
+                          // Correção do erro de digitação no acesso ao objectId
+                          String? eventId = evento.containsKey('objectId')
+                              ? evento['objectId']
+                              : null;
+
+                          if (eventId == null || eventId.isEmpty) {
+                            print("Erro: ID do evento não encontrado.");
+                            return; // Evita continuar se não houver ID do evento
+                          }
+
+                          // Obtendo o usuário autenticado
+                          ParseUser? currentUser =
+                              await ParseUser.currentUser() as ParseUser?;
+                          if (currentUser != null) {
+                            String userId = currentUser.objectId ?? "";
+
+                            print("ID do usuário: $userId");
+                            print("ID do evento: $eventId");
+
+                            if (eventId.isNotEmpty && userId.isNotEmpty) {
+                              String? resultado =
+                                  await inscreverUsuarioEmEvento(
+                                      userId, eventId);
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        resultado ?? "Erro ao se inscrever")),
+                              );
+                            } else {
+                              print("Erro: ID do usuário ou do evento vazio.");
+                            }
+                          } else {
+                            print("Usuário não autenticado.");
+                          }
+                        },
+
+                        // Inscrever no evento
+
+                        child: const Text('Inscrever-se'),
+                      ),
+                      onTap: () {
+                        // Lógica para abrir a página de detalhes do evento
+                      },
+                    ),
+                  );
+                },
+              ),
+            );
+          }
+        },
       ),
     );
   }
 }
 
+class ProfileScreen extends StatefulWidget {
+  final String objectId;
+
+  ProfileScreen({Key? key, required this.objectId}) : super(key: key);
+
+  @override
+  _ProfileScreenState createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  String userName = "Carregando..."; // Texto inicial enquanto carrega o nome
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserName(); // Chama o método para buscar o nome do usuário
+  }
+
+  Future<void> _fetchUserName() async {
+    try {
+      // Cria a query para buscar na tabela "Usuario"
+      final query = QueryBuilder<ParseObject>(ParseObject('_User'))
+        ..whereEqualTo('objectId', widget.objectId);
+
+      // Executa a query
+      final response = await query.query();
+
+      if (response.success && response.results != null) {
+        final usuario = response.results!.first as ParseObject;
+        final name = usuario.get<String>('Nome') ?? 'Nome não encontrado';
+        setState(() {
+          userName = name; // Atualiza o estado com o nome do usuário
+        });
+      } else {
+        setState(() {
+          userName = 'Usuário não encontrado';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        userName = 'Erro ao buscar nome';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Perfil do Usuário'),
+        actions: [
+          Row(
+            children: [
+              const Text('Sair'),
+              IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: () => _logout(context),
+              ),
+            ],
+          )
+        ],
+      ),
+      body: Center(
+        child: Text(
+          'Nome do usuário: $userName', // Exibe o nome do usuário
+          style: const TextStyle(fontSize: 18),
+        ),
+      ),
+    );
+  }
+}
 
 class CadastroEventoScreen extends StatefulWidget {
   final String objectId;
@@ -362,16 +543,12 @@ class CadastroEventoScreen extends StatefulWidget {
 }
 
 class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
-  // Controladores para capturar os dados
   final _nomeController = TextEditingController();
   final _descricaoController = TextEditingController();
   final _vagasController = TextEditingController();
 
-  // Variáveis para data e hora
   DateTime _dataInicio = DateTime.now();
   DateTime _dataFim = DateTime.now();
-
-  // Padrão para latitude e longitude
   double _latitude = 0.0;
   double _longitude = 0.0;
 
@@ -383,14 +560,14 @@ class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
     super.dispose();
   }
 
-  // Função para abrir o seletor de data
   Future<void> _selectDate(BuildContext context, bool isInicio) async {
     final DateTime picked = await showDatePicker(
-      context: context,
-      initialDate: isInicio ? _dataInicio : _dataFim,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-    ) ?? DateTime.now();
+          context: context,
+          initialDate: isInicio ? _dataInicio : _dataFim,
+          firstDate: DateTime(2000),
+          lastDate: DateTime(2101),
+        ) ??
+        DateTime.now();
 
     setState(() {
       if (isInicio) {
@@ -401,7 +578,6 @@ class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
     });
   }
 
-  // Função para abrir o seletor de hora
   Future<void> _selectTime(BuildContext context, bool isInicio) async {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
@@ -411,15 +587,26 @@ class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
     if (picked != null) {
       setState(() {
         if (isInicio) {
-          _dataInicio = DateTime(_dataInicio.year, _dataInicio.month, _dataInicio.day, picked.hour, picked.minute);
+          _dataInicio = DateTime(
+            _dataInicio.year,
+            _dataInicio.month,
+            _dataInicio.day,
+            picked.hour,
+            picked.minute,
+          );
         } else {
-          _dataFim = DateTime(_dataFim.year, _dataFim.month, _dataFim.day, picked.hour, picked.minute);
+          _dataFim = DateTime(
+            _dataFim.year,
+            _dataFim.month,
+            _dataFim.day,
+            picked.hour,
+            picked.minute,
+          );
         }
       });
     }
   }
 
-  // Função para cadastrar o evento
   Future<void> _cadastrarEvento() async {
     if (_nomeController.text.isEmpty ||
         _descricaoController.text.isEmpty ||
@@ -432,7 +619,9 @@ class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
 
     if (widget.objectId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro: objectId do usuário não foi passado corretamente.')),
+        SnackBar(
+            content: Text(
+                'Erro: objectId do usuário não foi passado corretamente.')),
       );
       return;
     }
@@ -441,15 +630,13 @@ class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
     var evento = ParseObject('Evento')
       ..set('NomeEvento', _nomeController.text)
       ..set('Descricao', _descricaoController.text)
-      ..set('DataInicio', _dataInicio)  // Enviando diretamente o DateTime
-      ..set('DataFim', _dataFim)       // Enviando diretamente o DateTime
+      ..set('DataInicio', _dataInicio)
+      ..set('DataFim', _dataFim)
       ..set('Vagas', int.parse(_vagasController.text))
       ..set('Lat', _latitude)
-      ..set('Long', _longitude);
-
-    // Criando o objeto Usuario e atribuindo o id do usuário
-    var usuario = ParseObject('Usuario')..objectId = widget.objectId;
-    evento.set('idUsuario', usuario);
+      ..set('Long', _longitude)
+      // Configurar o campo idUsuario como um Pointer
+      ..set('idUsuario', ParseObject('_User')..objectId = widget.objectId);
 
     try {
       var response = await evento.save();
@@ -459,21 +646,17 @@ class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
         );
         Navigator.pop(context); // Voltar para a tela anterior
       } else {
-        // Exibir mensagem de erro com o conteúdo detalhado
         String errorMessage = response.error?.message ?? 'Erro desconhecido';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao cadastrar o evento. Erro: $errorMessage')),
+          SnackBar(content: Text('Erro ao cadastrar o evento: $errorMessage')),
         );
       }
     } catch (e) {
-      // Capturar erros de rede ou outros erros
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erro: $e')),
       );
     }
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -491,11 +674,11 @@ class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
               controller: _descricaoController,
               decoration: const InputDecoration(labelText: 'Descrição'),
             ),
-            // Data de Início
             Row(
               children: [
                 Expanded(
-                  child: Text('Data Início: ${_dataInicio.toLocal().toString().split(' ')[0]}'),
+                  child: Text(
+                      'Data Início: ${_dataInicio.toLocal().toString().split(' ')[0]}'),
                 ),
                 ElevatedButton(
                   onPressed: () => _selectDate(context, true),
@@ -507,11 +690,11 @@ class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
                 ),
               ],
             ),
-            // Data de Fim
             Row(
               children: [
                 Expanded(
-                  child: Text('Data Fim: ${_dataFim.toLocal().toString().split(' ')[0]}'),
+                  child: Text(
+                      'Data Fim: ${_dataFim.toLocal().toString().split(' ')[0]}'),
                 ),
                 ElevatedButton(
                   onPressed: () => _selectDate(context, false),
@@ -528,7 +711,6 @@ class _CadastroEventoScreenState extends State<CadastroEventoScreen> {
               decoration: const InputDecoration(labelText: 'Vagas'),
               keyboardType: TextInputType.number,
             ),
-            // Botão de Cadastro
             ElevatedButton(
               onPressed: _cadastrarEvento,
               child: const Text('Cadastrar'),
