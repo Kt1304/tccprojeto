@@ -73,7 +73,6 @@ flutter:
   uses-material-design: true
   assets: 
      - assets/imag/
-     - assets/imag/fundo_certificado.jpg
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
